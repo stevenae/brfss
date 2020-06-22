@@ -1,0 +1,1 @@
+cdc_fmt <- jsonlite::fromJSON('~/Downloads/2192-3692-bundle-archive/2015_formats.json')
