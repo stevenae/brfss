@@ -23,7 +23,7 @@ levels(by_cnty$X_STATE) <- c("ALABAMA", "ALASKA", "ARIZONA", "ARKANSAS", "CALIFO
 
 with(subset(by_cnty,X_STATE=='OREGON'),table(X_CNTYNAM,IYEAR))
 
-table(by_cnty$IYEAR)
+lapply(unique(by_cnty$X_STATE),function(x){with(subset(by_cnty,X_STATE==x),table(X_CNTYNAM,IYEAR))})
 
 
 
