@@ -2,8 +2,9 @@ library('haven')
 by_cnty <- lapply(Sys.glob('~/Documents/brfss_smart_data/*'),read_xpt)
 
 name_overlap <- Reduce(intersect, lapply(by_cnty[-1],names))
-sort(name_overlap)
+# sort(name_overlap)
 
+by_cnty <- lapply(by_cnty,function(x){x[,name_overlap]})
 by_cnty <- do.call(rbind,by_cnty)
 
 cnty02$A_STATE <- factor(cnty02$A_STATE)
