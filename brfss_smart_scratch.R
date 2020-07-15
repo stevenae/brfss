@@ -25,7 +25,14 @@ with(subset(by_cnty,X_STATE=='OREGON'),table(X_CNTYNAM,IYEAR))
 
 lapply(unique(by_cnty$X_STATE),function(x){with(subset(by_cnty,X_STATE==x),table(X_CNTYNAM,IYEAR))})
 
+by_cnty$state_cnty <- with(by_cnty,paste(X_STATE,X_CNTYNAM))
+state_cnty_tbl <- with(by_cnty,table(state_cnty,IYEAR))
+state_cnty_tbl_rowsums <- rowSums(state_cnty_tbl==0)
+table(state_cnty_tbl_rowsums)
 
+lapply(seq(8),function(num_missing_yrs){
+	table(unlist((apply(state_cnty_tbl[state_cnty_tbl_rowsums<=num_missing_yrs,],1,function(yr_obs){which(yr_obs==0)}))))
+})
 
 
 
