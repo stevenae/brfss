@@ -1,0 +1,6 @@
+Goal is to take BRFSS data and match up with dates of establishment for community acupuncture clinics (as provided by POCA Co-op) to infer effect of community acupuncture clinic opening on public health outcomes.
+
+Using BRFSS SMART files as they are inherently linked with geographic regions -- currently planning to use counties, as opposed to MMSAs, as MMSAs are both large and sparse. That said, county data is not comprehensive and will require dropping some counties to reach longitudinal validity, and MMSAs may turn out to be easier / more consistent.
+
+Making county selection and year selection at the same time, looking for which years to drop in order to reach a high number of counties with a max of 2 years of data missing.
+
