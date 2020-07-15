@@ -28,11 +28,20 @@ lapply(unique(by_cnty$X_STATE),function(x){with(subset(by_cnty,X_STATE==x),table
 by_cnty$state_cnty <- with(by_cnty,paste(X_STATE,X_CNTYNAM))
 state_cnty_tbl <- with(by_cnty,table(state_cnty,IYEAR))
 state_cnty_tbl_rowsums <- rowSums(state_cnty_tbl==0)
+# Where to make cutoff of missing years
 table(state_cnty_tbl_rowsums)
+plot(ecdf(state_cnty_tbl_rowsums), do.points=F,col.01line = NULL,verticals=TRUE)
 
 lapply(seq(8),function(num_missing_yrs){
 	table(unlist((apply(state_cnty_tbl[state_cnty_tbl_rowsums<=num_missing_yrs,],1,function(yr_obs){which(yr_obs==0)}))))
 })
+
+
+
+
+
+
+
 
 
 
