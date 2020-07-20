@@ -79,6 +79,7 @@ evalerror <- function(preds, dtrain) {
 brfss <- by_cnty
 brfss$IYEAR <- parse_integer(brfss$IYEAR)
 brfss$outcome <- brfss$QLACTLM2 == 1
+brfss$outcome <- as.numeric(brfss$outcome)
 
 model_iters <- function(brfss) {
 	iter_yrs <- sort(unique(brfss$IYEAR),decreasing = F)
@@ -111,15 +112,15 @@ model_iters <- function(brfss) {
 		# run xgb iters
 		eval_by_md <- lapply(5,function(md) {
 			tr_va_xgb_m <- xgb.train(
-				objective = "reg:linear", 
+				objective = "binary:logistic", 
 				# booster = 'gblinear',
 				eta = .1,
 				tree_method = 'hist',
 				grow_policy = 'lossguide',
 				early_stopping_rounds = 20,
-				verbose=F,
-				maximize=F,
-				feval=evalerror,
+				# verbose=F,
+				# maximize=F,
+				# feval=evalerror,
 				nrounds =  400,
 				data = tr_packaged,
 				max_depth = md,
