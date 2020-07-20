@@ -1,12 +1,15 @@
-library('haven')
+library(caret)
+library(haven)
+library(data.table)
 by_cnty <- lapply(Sys.glob('~/Documents/brfss_smart_data/*'),read_xpt)
 
-name_overlap <- Reduce(intersect, lapply(by_cnty[-1],names))
+name_overlap <- Reduce(intersect, lapply(by_cnty[-c(1,length(by_cnty))],names))
 # sort(name_overlap)
 
-by_cnty <- lapply(by_cnty[-1],function(x){x[,name_overlap]})
+by_cnty <- lapply(by_cnty[-c(1,length(by_cnty))],function(x){x[,name_overlap]})
 by_cnty <- do.call(rbind,by_cnty)
 names(by_cnty) <- make.names(names(by_cnty))
+by_cnty <- data.table(by_cnty)
 by_cnty$X_STATE <- factor(by_cnty$X_STATE)
 levels(by_cnty$X_STATE) <- c("ALABAMA", "ALASKA", "ARIZONA", "ARKANSAS", "CALIFORNIA", 
 	"COLORADO", "CONNECTICUT", "DELAWARE", "DISTRICT OF COLUMBIA", 
@@ -21,20 +24,20 @@ levels(by_cnty$X_STATE) <- c("ALABAMA", "ALASKA", "ARIZONA", "ARKANSAS", "CALIFO
 	"WEST VIRGINIA", "WISCONSIN", "WYOMING", "GUAM", "PUERTO RICO",
 	"U.S. VIRGIN ISLANDS")
 
-with(subset(by_cnty,X_STATE=='OREGON'),table(X_CNTYNAM,IYEAR))
+# with(subset(by_cnty,X_STATE=='OREGON'),table(X_CNTYNAM,IYEAR))
 
-lapply(unique(by_cnty$X_STATE),function(x){with(subset(by_cnty,X_STATE==x),table(X_CNTYNAM,IYEAR))})
+# lapply(unique(by_cnty$X_STATE),function(x){with(subset(by_cnty,X_STATE==x),table(X_CNTYNAM,IYEAR))})
 
-by_cnty$state_cnty <- with(by_cnty,paste(X_STATE,X_CNTYNAM))
-state_cnty_tbl <- with(by_cnty,table(state_cnty,IYEAR))
-state_cnty_tbl_rowsums <- rowSums(state_cnty_tbl==0)
+# by_cnty$state_cnty <- with(by_cnty,paste(X_STATE,X_CNTYNAM))
+# state_cnty_tbl <- with(by_cnty,table(state_cnty,IYEAR))
+# state_cnty_tbl_rowsums <- rowSums(state_cnty_tbl==0)
 # Where to make cutoff of missing years
-table(state_cnty_tbl_rowsums)
-plot(ecdf(state_cnty_tbl_rowsums), do.points=F,col.01line = NULL,verticals=TRUE)
+# table(state_cnty_tbl_rowsums)
+# plot(ecdf(state_cnty_tbl_rowsums), do.points=F,col.01line = NULL,verticals=TRUE)
 
-lapply(seq(8),function(num_missing_yrs){
-	table(unlist((apply(state_cnty_tbl[state_cnty_tbl_rowsums<=num_missing_yrs,],1,function(yr_obs){which(yr_obs==0)}))))
-})
+# lapply(seq(8),function(num_missing_yrs){
+# 	table(unlist((apply(state_cnty_tbl[state_cnty_tbl_rowsums<=num_missing_yrs,],1,function(yr_obs){which(yr_obs==0)}))))
+# })
 
 # dropping 2011, which has so many missing
 by_cnty <- subset(by_cnty,IYEAR<2011)
@@ -72,8 +75,11 @@ evalerror <- function(preds, dtrain) {
 	mae <- mean(log(abs(preds/labels-1)))
 	return(list(metric = "error", value = mae))
 }
+
 brfss <- by_cnty
 brfss$IYEAR <- parse_integer(brfss$IYEAR)
+brfss$outcome <- brfss$QLACTLM2 == 1
+
 model_iters <- function(brfss) {
 	iter_yrs <- sort(unique(brfss$IYEAR),decreasing = F)
 	
@@ -83,21 +89,23 @@ model_iters <- function(brfss) {
 		oos_yr <- d
 		
 		dat_trva <- subset(brfss,IYEAR == va_yr)
-		tr_rows <- #dat_trva$sale_yr_2 < va_yr
-		va_rows <- #dat_trva$sale_yr_2 >= va_yr & dat_trva$sale_yr_2 < oos_yr
-		dat_oos <- subset(brfss,IYEAR == oos_yrss)
+		tr_rows <- createDataPartition(brfss$outcome, p = .8, 
+																								 list = FALSE, 
+																								 times = 1)
+		va_rows <- setdiff(seq(nrow(dat_trva)),tr_rows)
+		dat_oos <- subset(brfss,IYEAR == oos_yr)
 		
-		tr_packaged <- xgb.DMatrix(data.matrix(dat_trva[tr_rows,!c('sale_price','active_mls_number')]),
-															 label=dat_trva[tr_rows,sale_price],
-															 weight=dat_trva[tr_rows,sale_price]*dat_trva[tr_rows,active_areabuilding]
+		tr_packaged <- xgb.DMatrix(data.matrix(dat_trva[tr_rows,!c('outcome','QLACTLM2')]),
+															 label=dat_trva[tr_rows,'outcome'],
+															 weight=dat_trva[tr_rows,'X_CNTYWT']
 		)
-		va_packaged <- xgb.DMatrix(data.matrix(dat_trva[va_rows,!c('sale_price','active_mls_number')]),
-															 label=dat_trva[va_rows,sale_price],
-															 weight=dat_trva[va_rows,sale_price]*dat_trva[va_rows,active_areabuilding]
+		va_packaged <- xgb.DMatrix(data.matrix(dat_trva[va_rows,!c('outcome','QLACTLM2')]),
+															 label=dat_trva[va_rows,'outcome'],
+															 weight=dat_trva[va_rows,'X_CNTYWT']
 		)
-		oos_packaged <- xgb.DMatrix(data.matrix(dat_oos[,!c('sale_price','active_mls_number')]),
-																label=dat_oos[,sale_price],
-																weight=dat_oos[,sale_price]*dat_oos[,active_areabuilding]
+		oos_packaged <- xgb.DMatrix(data.matrix(dat_oos[,!c('outcome','QLACTLM2')]),
+																label=dat_oos[,'outcome'],
+																weight=dat_oos[,'X_CNTYWT']
 		)
 		
 		# run xgb iters
