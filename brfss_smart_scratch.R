@@ -80,6 +80,7 @@ brfss <- by_cnty
 brfss$IYEAR <- parse_integer(brfss$IYEAR)
 brfss$outcome <- brfss$QLACTLM2 == 1
 brfss$outcome <- as.numeric(brfss$outcome)
+brfss$outcome[is.na(brfss$outcome)] <- 0
 
 model_iters <- function(brfss) {
 	iter_yrs <- sort(unique(brfss$IYEAR),decreasing = F)
