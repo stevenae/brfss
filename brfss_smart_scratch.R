@@ -82,7 +82,7 @@ brfss$outcome <- brfss$QLACTLM2 == 1
 
 model_iters <- function(brfss) {
 	iter_yrs <- sort(unique(brfss$IYEAR),decreasing = F)
-	
+	d <- iter_yrs[-1][1]
 	eval_by_yrs <- lapply(iter_yrs[-1],function(d) {
 		print(d)
 		va_yr <- d-1
@@ -96,16 +96,16 @@ model_iters <- function(brfss) {
 		dat_oos <- subset(brfss,IYEAR == oos_yr)
 		
 		tr_packaged <- xgb.DMatrix(data.matrix(dat_trva[tr_rows,!c('outcome','QLACTLM2')]),
-															 label=dat_trva[tr_rows,'outcome'],
-															 weight=dat_trva[tr_rows,'X_CNTYWT']
+															 label=dat_trva[tr_rows,outcome],
+															 weight=dat_trva[tr_rows,X_CNTYWT]
 		)
 		va_packaged <- xgb.DMatrix(data.matrix(dat_trva[va_rows,!c('outcome','QLACTLM2')]),
-															 label=dat_trva[va_rows,'outcome'],
-															 weight=dat_trva[va_rows,'X_CNTYWT']
+															 label=dat_trva[va_rows,outcome],
+															 weight=dat_trva[va_rows,X_CNTYWT]
 		)
 		oos_packaged <- xgb.DMatrix(data.matrix(dat_oos[,!c('outcome','QLACTLM2')]),
-																label=dat_oos[,'outcome'],
-																weight=dat_oos[,'X_CNTYWT']
+																label=dat_oos[,outcome],
+																weight=dat_oos[,X_CNTYWT]
 		)
 		
 		# run xgb iters
@@ -127,6 +127,7 @@ model_iters <- function(brfss) {
 				watchlist=list(train=tr_packaged,validate=va_packaged))
 			return(tr_va_xgb_m)
 		})
+		
 		saveRDS(eval_by_md[[1]],paste0('~/Documents/GitHub/data-science/attom_avm_data/attom_xgb_',county_fips,'.RDS'))
 		xgb_m_preds <- predict(eval_by_md[[1]],
 													 data.matrix(dat_oos[,!c('sale_price','active_mls_number')]))
