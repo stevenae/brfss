@@ -82,36 +82,51 @@ brfss$outcome <- brfss$QLACTLM2 == 1
 brfss$outcome <- as.numeric(brfss$outcome)
 brfss$outcome[is.na(brfss$outcome)] <- 0
 
+brfss$AGE
+brfss$HTIN2
+brfss$
+
 model_iters <- function(brfss) {
 	iter_yrs <- sort(unique(brfss$IYEAR),decreasing = F)
-	d <- iter_yrs[-1][1]
-	eval_by_yrs <- lapply(iter_yrs[-1],function(d) {
+	d <- iter_yrs[-c(1,2)][1]
+	eval_by_yrs <- lapply(iter_yrs[-c(1,2)],function(d) {
 		print(d)
 		va_yr <- d-1
 		oos_yr <- d
 		
 		dat_trva <- subset(brfss,IYEAR == va_yr)
-		tr_rows <- createDataPartition(brfss$outcome, p = .8, 
+		tr_rows <- createDataPartition(dat_trva$outcome, p = .8, 
 																								 list = FALSE, 
 																								 times = 1)
 		va_rows <- setdiff(seq(nrow(dat_trva)),tr_rows)
 		dat_oos <- subset(brfss,IYEAR == oos_yr)
 		
+		# 7/21/20 We'll cut the below, all too closely related
+		# 1:  USEEQUIP 2.728468e-01 9.605390e-02 0.039149653
+		# 2:  POORHLTH 1.324804e-01 4.591618e-02 0.041885919
+		# 3:   GENHLTH 1.262460e-01 8.154534e-02 0.035571459
+		# 4:  PHYSHLTH 1.012915e-01 4.656002e-02 0.023784466
+		# 5:    EMPLOY 5.751206e-02 6.283269e-02 0.046937487
+		# 6:  X_RFHLTH 5.433353e-02 1.446244e-02 0.005683014
+		# 9:  MENTHLTH 1.228678e-02 1.997885e-02 0.023363502
+		# 
+		cut_vars <- c('USEEQUIP','POORHLTH','GENHLTH','PHYSHLTH','EMPLOY','X_RFHLTH','MENTHLTH')
+		
 		tr_packaged <- xgb.DMatrix(data.matrix(dat_trva[tr_rows,!c('outcome','QLACTLM2')]),
-															 label=dat_trva[tr_rows,outcome],
-															 weight=dat_trva[tr_rows,X_CNTYWT]
+															 label=dat_trva[tr_rows,outcome]
+															 # ,weight=dat_trva[tr_rows,X_CNTYWT]
 		)
 		va_packaged <- xgb.DMatrix(data.matrix(dat_trva[va_rows,!c('outcome','QLACTLM2')]),
-															 label=dat_trva[va_rows,outcome],
-															 weight=dat_trva[va_rows,X_CNTYWT]
+															 label=dat_trva[va_rows,outcome]
+															 # ,weight=dat_trva[va_rows,X_CNTYWT]
 		)
-		oos_packaged <- xgb.DMatrix(data.matrix(dat_oos[,!c('outcome','QLACTLM2')]),
-																label=dat_oos[,outcome],
-																weight=dat_oos[,X_CNTYWT]
+		oos_packaged <- xgb.DMatrix(data.matrix(dat_oos[,!c('outcome','QLACTLM2',)]),
+																label=dat_oos[,outcome]
+																# ,weight=dat_oos[,X_CNTYWT]
 		)
 		
 		# run xgb iters
-		eval_by_md <- lapply(5,function(md) {
+		# eval_by_md <- lapply(5,function(md) {
 			tr_va_xgb_m <- xgb.train(
 				objective = "binary:logistic", 
 				# booster = 'gblinear',
@@ -120,15 +135,20 @@ model_iters <- function(brfss) {
 				grow_policy = 'lossguide',
 				early_stopping_rounds = 20,
 				# verbose=F,
-				# maximize=F,
+				maximize=T,
 				# feval=evalerror,
+				eval_metric = 'auc',
 				nrounds =  400,
 				data = tr_packaged,
-				max_depth = md,
+				max_depth = 5,
 				# print_every_n = 10,
 				watchlist=list(train=tr_packaged,validate=va_packaged))
-			return(tr_va_xgb_m)
-		})
+		# 	return(tr_va_xgb_m)
+		# })
+		
+		xgb.importance(model=tr_va_xgb_m)
+		
+		
 		
 		saveRDS(eval_by_md[[1]],paste0('~/Documents/GitHub/data-science/attom_avm_data/attom_xgb_',county_fips,'.RDS'))
 		xgb_m_preds <- predict(eval_by_md[[1]],
