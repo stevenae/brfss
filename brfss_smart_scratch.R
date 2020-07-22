@@ -1,3 +1,5 @@
+library(lubridate)
+library(doParallel)
 library(readr)
 library(xgboost)
 `%notin%` <- Negate(`%in%`)
@@ -35,6 +37,7 @@ levels(by_cnty$X_STATE) <- c("ALABAMA", "ALASKA", "ARIZONA", "ARKANSAS", "CALIFO
 
 # lapply(unique(by_cnty$X_STATE),function(x){with(subset(by_cnty,X_STATE==x),table(X_CNTYNAM,IYEAR))})
 
+by_cnty$IDATE <- as.numeric(mdy(by_cnty$IDATE))
 by_cnty$state_cnty <- with(by_cnty,paste(X_STATE,X_CNTYNAM))
 state_cnty_tbl <- with(by_cnty,table(state_cnty,IYEAR))
 state_cnty_tbl_rowsums <- rowSums(state_cnty_tbl<100)
@@ -78,9 +81,9 @@ brfss$outcome <- brfss$QLACTLM2 == 1
 brfss$outcome <- as.numeric(brfss$outcome)
 brfss <- subset(brfss,!is.na(outcome))
 
-# missing_vars <- names(brfss)[colSums(is.na(brfss))>nrow(brfss)/1000]
-# brfss <- brfss[,!..missing_vars]
-# brfss <- na.omit(brfss)
+missing_vars <- names(brfss)[colSums(is.na(brfss))>nrow(brfss)/1000]
+brfss <- brfss[,!..missing_vars]
+brfss <- na.omit(brfss)
 
 # model_iters <- function(brfss) {
 	iter_yrs <- sort(unique(brfss$IYEAR),decreasing = F)
@@ -107,7 +110,7 @@ brfss <- subset(brfss,!is.na(outcome))
 		# INTVID is consistently in the top 10...very curious, but would confound the planned analysis\
 		# Same with SEQNO
 		cut_vars <- c('USEEQUIP','POORHLTH','GENHLTH','PHYSHLTH','X_RFHLTH','MENTHLTH',
-									'outcome','QLACTLM2','X_CNTYWT','X_WT2','X_CNTY','X_CNTYNAM','ADJCNTY','INTVID','SEQNO')
+									'outcome','QLACTLM2','X_CNTYWT','X_WT2','X_CNTY','X_CNTYNAM','ADJCNTY','INTVID','SEQNO','X_STATE','X_PSU')
 		
 		tr_packaged <- xgb.DMatrix(data.matrix(dat_trva[tr_rows,!..cut_vars]),
 															 label=dat_trva[tr_rows,outcome]
@@ -143,59 +146,50 @@ brfss <- subset(brfss,!is.na(outcome))
 		# 	return(tr_va_xgb_m)
 		# })
 		
-		(imp_vars <- head(xgb.importance(model=tr_va_xgb_m),5)$Feature)
-		imp_vars <- unique(c(imp_vars,'state_cnty'))
-		brfss <- brfss[,..imp_vars]
+		model_imp <- head(xgb.importance(model=tr_va_xgb_m),20)
+		imp_val <- model_imp$Gain
+		(imp_vars <- model_imp$Feature)
+		imp_vars <- unique(c(imp_vars,'state_cnty','outcome'))
+		brfss_match <- subset(brfss,IYEAR==va_yr)[,..imp_vars]
 		
 		# run_mds <- function(hl_a,hl_subs,hl_zips){
-		state_cnty_vec <- unique(brfss$state_cnty)
+		state_cnty_vec <- unique(brfss_match$state_cnty)
 		acu_counties <- sample(state_cnty_vec,10)
 		non_acu_counties <- setdiff(state_cnty_vec,acu_counties)
-		brfss_acu_subs <- lapply(acu_counties,function(x){subset(brfss,state_cnty==x)[,!'state_cnty']})
-		brfss_non_acu_subs <- lapply(non_acu_counties,function(x){subset(brfss,state_cnty==x)[,!'state_cnty']})
+		brfss_match_acu_subs <- lapply(acu_counties,function(x){subset(brfss_match,state_cnty==x)[,!'state_cnty']})
+		brfss_match_non_acu_subs <- lapply(non_acu_counties,function(x){subset(brfss_match,state_cnty==x)[,!'state_cnty']})
 		
-		cl <- makeCluster(8,outfile='')
-		registerDoParallel(cl)
+		# cl <- makeCluster(8,outfile='')
+		# registerDoParallel(cl)
 		
-		foreach(acu_sub=brfss_acu_subs,acu_label=acu_counties,.packages=c('crossmatch','MASS')) %dopar%
-			foreach(non_acu_sub=brfss_non_acu_subs,non_acu_label=non_acu_counties) %do% {
-			start <- Sys.time()
+		# foreach(acu_sub=brfss_match_acu_subs,acu_label=acu_counties,.packages=c('crossmatch','MASS')) %:%
+		# 	foreach(non_acu_sub=brfss_match_non_acu_subs,non_acu_label=non_acu_counties) %dopar% {
+		# 	start <- Sys.time()
 			
-			acu_sub=brfss_acu_subs[[1]]
-			non_acu_sub=brfss_non_acu_subs[[1]]
+			acu_sub=brfss_match_acu_subs[[1]]
+			non_acu_sub=brfss_match_non_acu_subs[[1]]
 			acu_label=acu_counties[[1]]
 			non_acu_label=non_acu_counties[[1]]
 			
-			# hl_b <- na.omit(x[,seq(2,6)])
+			library(Matching)
 			X <- rbind(acu_sub,non_acu_sub)
-			# Z <- c(rep(0,nrow(acu_sub)),rep(1,nrow(non_acu_sub)))
-			# library(bigmatch)
-			# system.time(k <- nfmatch(z=Z,p=rep(1,length(Z)),X=X,caliper=1,dat=X,rank=FALSE))
-			# 
-			# colSums(is.na(X))
-			
-			# dis <- gendistance(X)
+			Y <- X$outcome
+			X[,outcome:=NULL]
+			X <- scale(data.matrix(X))
+			Tr <- c(rep(1,nrow(acu_sub)),rep(0,nrow(non_acu_sub)))
+			(m <- Match(Y=Y, X=X, Tr=Tr, Weight.matrix = diag(imp_val), ties=F))
+			# library(optmatch)
+
+			# dis <- match_on(V2 ~ ., data = X, method = 'mahalanobis')
+			# system.time(mahal.match <- pairmatch(dis, data = X))
 			# mdm <- distancematrix(dis)
 			# match <- nonbimatch(mdm)
 			# qom <- qom(df.dist$cov, df.match$matches)
-			X <- data.matrix(X)
-			n <- dim(X)[1]
-			k <- dim(X)[2]
-			for (j in 1:k) {X[,j] <- rank(X[,j])}
-			cv <- cov(X)
-			vuntied <- var(1:n)
-			rat <- sqrt(vuntied/diag(cv))
-			cv <- diag(rat)%*%cv%*%diag(rat)
-			out <- matrix(NA,n,n)
-			icov <- ginv(cv)
-			for (i in 1:n) {out[i,] <- mahalanobis(X,X[i,],icov,inverted=TRUE)}
 			
-			dis <- out
-			cmt <- crossmatchtest(c(rep_len(0,nrow(acu_sub)),rep_len(1,nrow(non_acu_sub))),dis)
-			print(paste(acu_label,':',non_acu_label,"|",Sys.time()-start))
+			print(paste(Sys.time()-start))
 			return(cmt)
-		}
-		}
+		# }
+		
 		
 		# cbind(colnames(tr_x)[match(xgb_m_imp$Feature,colnames(tr_x))],xgb_m_imp$Feature) # match function check
 		munged_importance <- apply(xgb_m_imp[,c(3,4)],1,max)
