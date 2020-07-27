@@ -175,9 +175,11 @@ brfss <- na.omit(brfss)
 			Y <- X$outcome
 			WTS <- X$X_CNTYWT
 			X[,c('outcome','X_CNTYWT'):=NULL]
-			X <- scale(data.matrix(X))
+			X <- data.matrix(X)
+			X <- apply(X, 2, function(y) (y - mean(y)) / sd(y) ^ as.logical(sd(y)))
+			X <- X %*% diag(imp_val)
 			Tr <- c(rep(1,nrow(acu_sub)),rep(0,nrow(non_acu_sub)))
-			m <- Match(Y=Y, X=X, Tr=Tr, Weight.matrix = diag(imp_val), weights = WTS, ties=F)
+			m <- Match(Y=Y, X=X, Tr=Tr, weights = WTS, ties=F)
 			
 			return(m)
 		}
@@ -188,53 +190,58 @@ brfss <- na.omit(brfss)
 			return(x)
 		})
 		
-		ests <- lapply(unlist(matches,recursive = F),function(x){x$est})
-		ests <- as.numeric(ests)
-		ests <- matrix(ests,nrow = length(acu_counties))
+		va_ests <- lapply(unlist(matches,recursive = F),function(x){x$est})
+		va_ests <- as.numeric(va_ests)
+		va_ests <- matrix(va_ests,nrow = length(acu_counties))
 		
-		sds <- lapply(unlist(matches,recursive = F),function(x){x$se.standard})
-		sds <- as.numeric(sds)
-		sds <- matrix(sds,nrow = length(acu_counties))
+		va_sds <- lapply(unlist(matches,recursive = F),function(x){x$se.standard})
+		va_sds <- as.numeric(va_sds)
+		va_sds <- matrix(va_sds,nrow = length(acu_counties))
 		
-		which_min_by_row <- apply(abs(ests),1,which.min)
-		abs(ests)[cbind(seq(nrow(ests)),min_by_row)]
-		
-		sd95_by_row <- 2*abs(sds)[cbind(seq(nrow(sds)),min_by_row)]
+		which_min_by_row <- apply(abs(va_ests),1,which.min)
+		est_by_row <- abs(va_ests)[cbind(seq(nrow(va_ests)),which_min_by_row)]
+		sd95_by_row <- 2*abs(va_sds)[cbind(seq(nrow(va_sds)),which_min_by_row)]
+		table(sig_va <- est_by_row > sd95_by_row)
 		
 		# select valid matches
 		# logic test 
 		# matrix(c(1,2,3,4),nrow=2) < matrix(c(1,3,3,4),nrow=2)
 		# matrix(c(1,2,3,4),nrow=2) < matrix(c(4,3,2,1),nrow=2)
-		valid_matches <- abs(ests) < sds
-		valid_matches_by_acu_cnt <- apply(valid_matches,1,which)
-		invalid_matches_by_acu_cnt <- apply(!valid_matches,1,which)
+		# valid_matches <- abs(va_ests) < va_sds
+		# valid_matches_by_acu_cnt <- apply(valid_matches,1,which)
+		# invalid_matches_by_acu_cnt <- apply(!valid_matches,1,which)
 		# diagnostics of valid vs invalid matches
-		prop.table(table(valid_matches))
-		hist(abs(ests)[!valid_matches],freq = T,breaks = seq(0,.2,.005))
-		hist(abs(ests)[valid_matches],freq = T,breaks = seq(0,.2,.005),add=T,col='green')
+		# prop.table(table(valid_matches))
+		# hist(abs(va_ests)[!valid_matches],freq = T,breaks = seq(0,.2,.005))
+		# hist(abs(va_ests)[valid_matches],freq = T,breaks = seq(0,.2,.005),add=T,col='green')
 		
 		# for each acu county, get comparison counties
-		valid_counties <- apply(valid_matches,1,function(x){non_acu_counties[which(x)]})
+		# valid_counties <- apply(valid_matches,1,function(x){non_acu_counties[which(x)]})
+		valid_counties <- non_acu_counties[which_min_by_row]
 		names(valid_counties) <- acu_counties
 		# diagnostics of selected counties
 		table(table(unlist(valid_counties)))
 		prop.table(table(duplicated(unlist(valid_counties))))
 		
-		acu_county <- names(valid_counties)[1]
+		# acu_county <- names(valid_counties)[1]
 		oos_ests_by_acu_county <- lapply(names(valid_counties),function(acu_county){
-			non_acu_counties <- valid_counties[[acu_county]]
 			
+			print(acu_county)
 			acu_sub <- subset(brfss_match_oos,state_cnty == acu_county)[,!'state_cnty']
+			
+			non_acu_counties <- valid_counties[[acu_county]]
 			brfss_match_oos_non_acu_subs <- lapply(non_acu_counties,function(x){subset(brfss_match_oos,state_cnty == x)[,!'state_cnty']})
-			non_acu_sub <- brfss_match_oos_non_acu_subs[[1]]
+			# non_acu_sub <- brfss_match_oos_non_acu_subs[[1]]
 			matches <- lapply(brfss_match_oos_non_acu_subs,function(non_acu_sub){
 				X <- rbind(acu_sub,non_acu_sub)
 				Y <- X$outcome
 				WTS <- X$X_CNTYWT
 				X[,c('outcome','X_CNTYWT'):=NULL]
-				X <- scale(data.matrix(X))
+				X <- data.matrix(X)
+				X <- apply(X, 2, function(y) (y - mean(y)) / sd(y) ^ as.logical(sd(y)))
+				X <- X %*% diag(imp_val)
 				Tr <- c(rep(1,nrow(acu_sub)),rep(0,nrow(non_acu_sub)))
-				m <- Match(Y=Y, X=X, Tr=Tr, Weight.matrix = diag(imp_val), weights = WTS, ties=F)
+				m <- Match(Y=Y, X=X, Tr=Tr, weights = WTS, ties=F)
 				return(m)
 			})
 			oos_ests <- lapply(matches,function(x){
