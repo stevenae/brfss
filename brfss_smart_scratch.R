@@ -203,18 +203,6 @@ brfss <- na.omit(brfss)
 		sd95_by_row <- 2*abs(va_sds)[cbind(seq(nrow(va_sds)),which_min_by_row)]
 		table(sig_va <- est_by_row > sd95_by_row)
 		
-		# select valid matches
-		# logic test 
-		# matrix(c(1,2,3,4),nrow=2) < matrix(c(1,3,3,4),nrow=2)
-		# matrix(c(1,2,3,4),nrow=2) < matrix(c(4,3,2,1),nrow=2)
-		# valid_matches <- abs(va_ests) < va_sds
-		# valid_matches_by_acu_cnt <- apply(valid_matches,1,which)
-		# invalid_matches_by_acu_cnt <- apply(!valid_matches,1,which)
-		# diagnostics of valid vs invalid matches
-		# prop.table(table(valid_matches))
-		# hist(abs(va_ests)[!valid_matches],freq = T,breaks = seq(0,.2,.005))
-		# hist(abs(va_ests)[valid_matches],freq = T,breaks = seq(0,.2,.005),add=T,col='green')
-		
 		# for each acu county, get comparison counties
 		# valid_counties <- apply(valid_matches,1,function(x){non_acu_counties[which(x)]})
 		valid_counties <- non_acu_counties[which_min_by_row]
