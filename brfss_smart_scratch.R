@@ -204,7 +204,6 @@ brfss <- na.omit(brfss)
 		table(sig_va <- est_by_row > sd95_by_row)
 		
 		# for each acu county, get comparison counties
-		# valid_counties <- apply(valid_matches,1,function(x){non_acu_counties[which(x)]})
 		valid_counties <- non_acu_counties[which_min_by_row]
 		names(valid_counties) <- acu_counties
 		# diagnostics of selected counties
