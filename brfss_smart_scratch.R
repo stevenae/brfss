@@ -88,7 +88,7 @@ brfss <- na.omit(brfss)
 # model_iters <- function(brfss) {
 	iter_yrs <- sort(unique(brfss$IYEAR),decreasing = F)
 	d <- iter_yrs[-c(1,2)][1]
-	# eval_by_yrs <- lapply(iter_yrs[-c(1,2)],function(d) {
+	eval_by_yrs <- lapply(iter_yrs[-c(1,2)],function(d) {
 		print(d)
 		va_yr <- d-1
 		oos_yr <- d
@@ -134,104 +134,116 @@ brfss <- na.omit(brfss)
 				tree_method = 'hist',
 				grow_policy = 'lossguide',
 				early_stopping_rounds = 20,
-				verbose=F,
+				# verbose=F,
 				maximize=T,
 				# feval=evalerror,
 				eval_metric = 'auc',
 				nrounds =  400,
 				data = tr_packaged,
 				max_depth = 5,
-				# print_every_n = 10,
+				print_every_n = 10,
 				watchlist=list(train=tr_packaged,validate=va_packaged))
 		# 	return(tr_va_xgb_m)
 		# })
 		
-		model_imp <- head(xgb.importance(model=tr_va_xgb_m),20)
+		(model_imp <- head(xgb.importance(model=tr_va_xgb_m),20))
 		imp_val <- model_imp$Gain
-		(imp_vars <- model_imp$Feature)
-		imp_vars <- unique(c(imp_vars,'state_cnty','outcome'))
-		brfss_match <- subset(brfss,IYEAR==va_yr)[,..imp_vars]
+		imp_vars <- model_imp$Feature
+		imp_vars <- unique(c(imp_vars,'state_cnty','outcome','X_CNTYWT'))
+		brfss_match_va <- subset(brfss,IYEAR==va_yr)[,..imp_vars]
+		brfss_match_oos <- subset(brfss,IYEAR==oos_yr)[,..imp_vars]
 		
 		# run_mds <- function(hl_a,hl_subs,hl_zips){
-		state_cnty_vec <- unique(brfss_match$state_cnty)
+		state_cnty_vec <- unique(brfss_match_va$state_cnty)
 		acu_counties <- sample(state_cnty_vec,10)
 		non_acu_counties <- setdiff(state_cnty_vec,acu_counties)
-		brfss_match_acu_subs <- lapply(acu_counties,function(x){subset(brfss_match,state_cnty==x)[,!'state_cnty']})
-		brfss_match_non_acu_subs <- lapply(non_acu_counties,function(x){subset(brfss_match,state_cnty==x)[,!'state_cnty']})
+		brfss_match_va_acu_subs <- lapply(acu_counties,function(x){subset(brfss_match_va,state_cnty==x)[,!'state_cnty']})
+		brfss_match_va_non_acu_subs <- lapply(non_acu_counties,function(x){subset(brfss_match_va,state_cnty==x)[,!'state_cnty']})
 		
-		# cl <- makeCluster(8,outfile='')
-		# registerDoParallel(cl)
+		cl <- makeCluster(8,outfile='')
+		registerDoParallel(cl)
 		
-		# foreach(acu_sub=brfss_match_acu_subs,acu_label=acu_counties,.packages=c('crossmatch','MASS')) %:%
-		# 	foreach(non_acu_sub=brfss_match_non_acu_subs,non_acu_label=non_acu_counties) %dopar% {
-		# 	start <- Sys.time()
+		matches <- foreach(acu_sub=brfss_match_va_acu_subs,acu_label=acu_counties,.packages=c('Matching','data.table')) %:%
+			foreach(non_acu_sub=brfss_match_va_non_acu_subs,non_acu_label=non_acu_counties) %dopar% {
+			print(paste(acu_label,non_acu_label))
+			# acu_sub=brfss_match_va_acu_subs[[1]]
+			# non_acu_sub=brfss_match_va_non_acu_subs[[1]]
+			# acu_label=acu_counties[[1]]
+			# non_acu_label=non_acu_counties[[1]]
 			
-			acu_sub=brfss_match_acu_subs[[1]]
-			non_acu_sub=brfss_match_non_acu_subs[[1]]
-			acu_label=acu_counties[[1]]
-			non_acu_label=non_acu_counties[[1]]
-			
-			library(Matching)
 			X <- rbind(acu_sub,non_acu_sub)
 			Y <- X$outcome
-			X[,outcome:=NULL]
+			WTS <- X$X_CNTYWT
+			X[,c('outcome','X_CNTYWT'):=NULL]
 			X <- scale(data.matrix(X))
 			Tr <- c(rep(1,nrow(acu_sub)),rep(0,nrow(non_acu_sub)))
-			(m <- Match(Y=Y, X=X, Tr=Tr, Weight.matrix = diag(imp_val), ties=F))
-			# library(optmatch)
-
-			# dis <- match_on(V2 ~ ., data = X, method = 'mahalanobis')
-			# system.time(mahal.match <- pairmatch(dis, data = X))
-			# mdm <- distancematrix(dis)
-			# match <- nonbimatch(mdm)
-			# qom <- qom(df.dist$cov, df.match$matches)
+			m <- Match(Y=Y, X=X, Tr=Tr, Weight.matrix = diag(imp_val), weights = WTS, ties=F)
 			
-			print(paste(Sys.time()-start))
-			return(cmt)
-		# }
+			return(m)
+		}
+		# name these objects
+		names(matches) <- acu_counties
+		matches <- lapply(matches,function(x){
+			names(x) <- non_acu_counties
+			return(x)
+		})
 		
+		ests <- lapply(unlist(matches,recursive = F),function(x){x$est})
+		ests <- as.numeric(ests)
+		ests <- matrix(ests,nrow = length(acu_counties))
 		
-		# cbind(colnames(tr_x)[match(xgb_m_imp$Feature,colnames(tr_x))],xgb_m_imp$Feature) # match function check
-		munged_importance <- apply(xgb_m_imp[,c(3,4)],1,max)
-		# barplot(munged_importance)
-		to_diag <- diag(munged_importance)
-		col_matchup <- match(xgb_m_imp$Feature,colnames(tr_x))
-		tr_x <- tr_x[,col_matchup] %*% to_diag
-		va_x <- va_x[,col_matchup] %*% to_diag
-		oos_x <- oos_x[,col_matchup] %*% to_diag
-		tr_va_x <- tr_va_x[,col_matchup] %*% to_diag
+		sds <- lapply(unlist(matches,recursive = F),function(x){x$se.standard})
+		sds <- as.numeric(sds)
+		sds <- matrix(sds,nrow = length(acu_counties))
 		
-		best_k <- 10# which.min(eval_by_k_agg$resid)
+		which_min_by_row <- apply(abs(ests),1,which.min)
+		abs(ests)[cbind(seq(nrow(ests)),min_by_row)]
 		
-		oos_kr <- knn.reg(train = tr_va_x,
-											test = oos_x,
-											y = dat_trva$sale_price,
-											k = best_k)
+		sd95_by_row <- 2*abs(sds)[cbind(seq(nrow(sds)),min_by_row)]
 		
-		oos_kr_min_nn_dists <- apply(attr(oos_kr,'nn.dist'),1,min)
-		oos_kr_resid_centered <- oos_kr$pred/dat_oos$sale_price-1
+		# select valid matches
+		# logic test 
+		# matrix(c(1,2,3,4),nrow=2) < matrix(c(1,3,3,4),nrow=2)
+		# matrix(c(1,2,3,4),nrow=2) < matrix(c(4,3,2,1),nrow=2)
+		valid_matches <- abs(ests) < sds
+		valid_matches_by_acu_cnt <- apply(valid_matches,1,which)
+		invalid_matches_by_acu_cnt <- apply(!valid_matches,1,which)
+		# diagnostics of valid vs invalid matches
+		prop.table(table(valid_matches))
+		hist(abs(ests)[!valid_matches],freq = T,breaks = seq(0,.2,.005))
+		hist(abs(ests)[valid_matches],freq = T,breaks = seq(0,.2,.005),add=T,col='green')
 		
-		model_comp_lm <- lm(xgb_m_raw_err~oos_kr_resid_centered)
+		# for each acu county, get comparison counties
+		valid_counties <- apply(valid_matches,1,function(x){non_acu_counties[which(x)]})
+		names(valid_counties) <- acu_counties
+		# diagnostics of selected counties
+		table(table(unlist(valid_counties)))
+		prop.table(table(duplicated(unlist(valid_counties))))
 		
-		indices <- attr(oos_kr, "nn.index")
-		dists <- attr(oos_kr, "nn.dist")
-		
-		ensemble_pred <- rowMeans(cbind(oos_kr$pred, xgb_m_preds))
-		ensemble_resid <- ensemble_pred/dat_oos$sale_price-1
-		
-		return(data.frame(xgb_pred=xgb_m_preds
-											,xgb_resid=xgb_m_raw_err
-											,knn_pred=oos_kr$pred
-											,knn_resid=oos_kr_resid_centered
-											,ensemble_pred=ensemble_pred
-											,ensemble_resid=ensemble_resid
-											,d=d
-											,actual=dat_oos$sale_price
-											,county=county_fips
-											,min_nn_dist=oos_kr_min_nn_dists
-											,model_disagreement=abs(log(xgb_m_preds/oos_kr$pred))
-											,oos_mls_numbers=oos_mls_numbers))
-		
+		acu_county <- names(valid_counties)[1]
+		oos_ests_by_acu_county <- lapply(names(valid_counties),function(acu_county){
+			non_acu_counties <- valid_counties[[acu_county]]
+			
+			acu_sub <- subset(brfss_match_oos,state_cnty == acu_county)[,!'state_cnty']
+			brfss_match_oos_non_acu_subs <- lapply(non_acu_counties,function(x){subset(brfss_match_oos,state_cnty == x)[,!'state_cnty']})
+			non_acu_sub <- brfss_match_oos_non_acu_subs[[1]]
+			matches <- lapply(brfss_match_oos_non_acu_subs,function(non_acu_sub){
+				X <- rbind(acu_sub,non_acu_sub)
+				Y <- X$outcome
+				WTS <- X$X_CNTYWT
+				X[,c('outcome','X_CNTYWT'):=NULL]
+				X <- scale(data.matrix(X))
+				Tr <- c(rep(1,nrow(acu_sub)),rep(0,nrow(non_acu_sub)))
+				m <- Match(Y=Y, X=X, Tr=Tr, Weight.matrix = diag(imp_val), weights = WTS, ties=F)
+				return(m)
+			})
+			oos_ests <- lapply(matches,function(x){
+				data.frame('est'=x$est,'se_std'=x$se.standard)
+			})
+			return(do.call(rbind,oos_ests))
+		})
+		oos_ests_by_acu_county <- do.call(rbind,oos_ests_by_acu_county)
+		prop.table(table(oos_ests_by_acu_county$est<2*oos_ests_by_acu_county$se_std))
 	})
 	eval_by_yrs <- do.call(rbind.data.frame,eval_by_yrs)
 	
