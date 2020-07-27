@@ -237,35 +237,11 @@ brfss <- na.omit(brfss)
 			return(do.call(rbind,oos_ests))
 		})
 		oos_ests_by_acu_county <- do.call(rbind,oos_ests_by_acu_county)
-		prop.table(table(oos_ests_by_acu_county$est<2*oos_ests_by_acu_county$se_std))
+		table(sig_oos <- with(oos_ests_by_acu_county,abs(est) > 2*se_std))
 	})
 	eval_by_yrs <- do.call(rbind.data.frame,eval_by_yrs)
-	
-	
-	par(mfcol=c(2,2))
-	(knn_distance_cutoff_val <- with(eval_by_yrs,
-																	 quantile(min_nn_dist,1-cor(min_nn_dist,
-																	 													 log(abs(knn_resid)))^2)))
-	with(eval_by_yrs,plot(min_nn_dist,abs(knn_resid)))
-	abline(v=knn_distance_cutoff_val,col='orange')
-	axis(2,at=seq(0,1,.1))
-	with(eval_by_yrs,plot(min_nn_dist,abs(xgb_resid)))
-	abline(v=knn_distance_cutoff_val,col='orange')
-	axis(2,at=seq(0,1,.1))
-	# saveRDS(knn_distance_cutoff_val,paste0('~/model_files_backup/knn_distance_cutoff_val_',county_fips,'.RDS'))
-	
-	(model_disagreement_cutoff_val <- with(eval_by_yrs,
-																				 quantile(model_disagreement,1-cor(model_disagreement,
-																				 																	log(abs(knn_resid)))^2)))
-	with(eval_by_yrs,plot(model_disagreement,abs(knn_resid)))
-	abline(v=model_disagreement_cutoff_val,col='orange')
-	axis(2,at=seq(0,1,.1))
-	with(eval_by_yrs,plot(model_disagreement,abs(xgb_resid)))
-	abline(v=model_disagreement_cutoff_val,col='orange')
-	axis(2,at=seq(0,1,.1))
-	# saveRDS(model_disagreement_cutoff_val,paste0('~/model_files_backup/model_disagreement_cutoff_val_',county_fips,'.RDS'))
 	return(eval_by_yrs)
-}
+# }
 
 
 
