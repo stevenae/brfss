@@ -1,3 +1,4 @@
+library(Matching)
 library(lubridate)
 library(doParallel)
 library(readr)
@@ -9,6 +10,12 @@ library(data.table)
 # library(MASS)
 # library(nbpMatching)
 library(crossmatch)
+library(survey)
+
+# acupuncture data
+crosswalk <- read_dta('~/Downloads/ZIP5_County_Crosswalk.dta')
+state_fips_name_map <- unique(crosswalk[,c('state_fips','state')])
+
 by_cnty <- lapply(Sys.glob('~/Documents/brfss_smart_data/*'),read_xpt)
 
 name_overlap <- Reduce(intersect, lapply(by_cnty,names))
@@ -19,19 +26,32 @@ by_cnty <- do.call(rbind,by_cnty)
 names(by_cnty) <- make.names(names(by_cnty))
 by_cnty <- subset(by_cnty,IYEAR %notin% c(2006,2011))
 by_cnty <- data.table(by_cnty)
-by_cnty$X_STATE <- factor(by_cnty$X_STATE)
-levels(by_cnty$X_STATE) <- c("ALABAMA", "ALASKA", "ARIZONA", "ARKANSAS", "CALIFORNIA", 
-	"COLORADO", "CONNECTICUT", "DELAWARE", "DISTRICT OF COLUMBIA", 
-	"FLORIDA", "GEORGIA", "HAWAII", "IDAHO", "ILLINOIS", "INDIANA",
-	"IOWA", "KANSAS", "KENTUCKY", "LOUISIANA", "MAINE", "MARYLAND",
-	"MASSACHUSETTS", "MICHIGAN", "MINNESOTA", "MISSISSIPPI", 
-	"MISSOURI", "MONTANA", "NEBRASKA", "NEVADA", "NEW HAMPSHIRE",
-	"NEW JERSEY", "NEW MEXICO", "NEW YORK", "NORTH CAROLINA", 
-	"NORTH DAKOTA", "OHIO", "OKLAHOMA", "OREGON", "PENNSYLVANIA",
-	"RHODE ISLAND", "SOUTH CAROLINA", "SOUTH DAKOTA", "TENNESSEE",
-	"TEXAS", "UTAH", "VERMONT", "VIRGINIA", "WASHINGTON",
-	"WEST VIRGINIA", "WISCONSIN", "WYOMING", "GUAM", "PUERTO RICO",
-	"U.S. VIRGIN ISLANDS")
+# by_cnty$X_STATE <- factor(by_cnty$X_STATE)
+# by_cnty$X_STATE <- as.numeric(by_cnty$X_STATE)
+state_fips_name_map <- state_fips_name_map[order(state_fips_name_map$state_fips),]
+by_cnty$X_STATE <- state_fips_name_map$state[by_cnty$X_STATE]
+
+table(unique(by_cnty$X_CNTYNAM) %in% crosswalk$county_name)
+
+table(toupper(unique(with(by_cnty,paste(X_STATE,X_CNTYNAM)))) %in% toupper(unique(with(crosswalk,paste(state,county_name)))))
+
+
+toupper(unique(with(by_cnty,paste(X_STATE,X_CNTYNAM))))[toupper(unique(with(by_cnty,paste(X_STATE,X_CNTYNAM)))) %notin% toupper(unique(with(crosswalk,paste(state,county_name))))]
+
+grep('LOS ANGELES',toupper(unique(with(crosswalk,paste(state,county_name)))),value = T)
+
+# levels(by_cnty$X_STATE) <- c("ALABAMA", "ALASKA", "ARIZONA", "ARKANSAS", "CALIFORNIA", 
+# 	"COLORADO", "CONNECTICUT", "DELAWARE", "DISTRICT OF COLUMBIA", 
+# 	"FLORIDA", "GEORGIA", "HAWAII", "IDAHO", "ILLINOIS", "INDIANA",
+# 	"IOWA", "KANSAS", "KENTUCKY", "LOUISIANA", "MAINE", "MARYLAND",
+# 	"MASSACHUSETTS", "MICHIGAN", "MINNESOTA", "MISSISSIPPI", 
+# 	"MISSOURI", "MONTANA", "NEBRASKA", "NEVADA", "NEW HAMPSHIRE",
+# 	"NEW JERSEY", "NEW MEXICO", "NEW YORK", "NORTH CAROLINA", 
+# 	"NORTH DAKOTA", "OHIO", "OKLAHOMA", "OREGON", "PENNSYLVANIA",
+# 	"RHODE ISLAND", "SOUTH CAROLINA", "SOUTH DAKOTA", "TENNESSEE",
+# 	"TEXAS", "UTAH", "VERMONT", "VIRGINIA", "WASHINGTON",
+# 	"WEST VIRGINIA", "WISCONSIN", "WYOMING", "GUAM", "PUERTO RICO",
+# 	"U.S. VIRGIN ISLANDS")
 
 # with(subset(by_cnty,X_STATE=='OREGON'),table(X_CNTYNAM,IYEAR))
 
@@ -85,10 +105,11 @@ missing_vars <- names(brfss)[colSums(is.na(brfss))>nrow(brfss)/1000]
 brfss <- brfss[,!..missing_vars]
 brfss <- na.omit(brfss)
 
+
 # model_iters <- function(brfss) {
 	iter_yrs <- sort(unique(brfss$IYEAR),decreasing = F)
 	d <- iter_yrs[-c(1,2)][1]
-	eval_by_yrs <- lapply(iter_yrs[-c(1,2)],function(d) {
+	# eval_by_yrs <- lapply(iter_yrs[-c(1,2)],function(d) {
 		print(d)
 		va_yr <- d-1
 		oos_yr <- d
@@ -109,7 +130,7 @@ brfss <- na.omit(brfss)
 		# 9:  MENTHLTH 1.228678e-02 1.997885e-02 0.023363502
 		# INTVID is consistently in the top 10...very curious, but would confound the planned analysis\
 		# Same with SEQNO
-		cut_vars <- c('USEEQUIP','POORHLTH','GENHLTH','PHYSHLTH','X_RFHLTH','MENTHLTH',
+		cut_vars <- c('USEEQUIP','POORHLTH','GENHLTH','PHYSHLTH','X_RFHLTH','MENTHLTH','IDATE',
 									'outcome','QLACTLM2','X_CNTYWT','X_WT2','X_CNTY','X_CNTYNAM','ADJCNTY','INTVID','SEQNO','X_STATE','X_PSU')
 		
 		tr_packaged <- xgb.DMatrix(data.matrix(dat_trva[tr_rows,!..cut_vars]),
@@ -146,7 +167,24 @@ brfss <- na.omit(brfss)
 		# 	return(tr_va_xgb_m)
 		# })
 		
-		(model_imp <- head(xgb.importance(model=tr_va_xgb_m),20))
+		(model_imp <- head(xgb.importance(model=tr_va_xgb_m),10))
+			
+			
+		# trying classical stats
+		
+		options(survey.lonely.psu = "adjust")
+		# des<-svydesign(ids=~1, strata=~X_STSTR, weights=~X_CNTYWT, data = brfss )
+		fit1 <- glm(formula(paste('outcome~',paste(c(model_imp$Feature,'IYEAR'),collapse =  '+'))), data=brfss[, c(model_imp$Feature,'X_CNTYWT','outcome','IYEAR'), with=F], weights = X_CNTYWT, family = "binomial")
+		summary(fit1)
+		
+		default_glm_mod = train(
+			form = default ~ .,
+			data = default_trn,
+			trControl = trainControl(method = "cv", number = 5),
+			method = "glm",
+			family = "binomial"
+		)
+			
 		imp_val <- model_imp$Gain
 		imp_vars <- model_imp$Feature
 		imp_vars <- unique(c(imp_vars,'state_cnty','outcome','X_CNTYWT'))
