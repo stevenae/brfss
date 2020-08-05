@@ -29,16 +29,16 @@ by_cnty <- data.table(by_cnty)
 # by_cnty$X_STATE <- factor(by_cnty$X_STATE)
 # by_cnty$X_STATE <- as.numeric(by_cnty$X_STATE)
 state_fips_name_map <- state_fips_name_map[order(state_fips_name_map$state_fips),]
-by_cnty$X_STATE <- state_fips_name_map$state[by_cnty$X_STATE]
+# cbind(state_fips_name_map$state[match(by_cnty$X_STATE,state_fips_name_map$state_fips)],by_cnty$X_STATE)[sample(seq(100000),10),]
 
-table(unique(by_cnty$X_CNTYNAM) %in% crosswalk$county_name)
+by_cnty$X_STATE <- state_fips_name_map$state[match(by_cnty$X_STATE,state_fips_name_map$state_fips)]
 
-table(toupper(unique(with(by_cnty,paste(X_STATE,X_CNTYNAM)))) %in% toupper(unique(with(crosswalk,paste(state,county_name)))))
+# table(unique(by_cnty$X_CNTYNAM) %in% crosswalk$county_name)
+# table(toupper(unique(with(by_cnty,paste(X_STATE,X_CNTYNAM)))) %in% toupper(unique(with(crosswalk,paste(state,county_name)))))
 
+# toupper(unique(with(by_cnty,paste(X_STATE,X_CNTYNAM))))[toupper(unique(with(by_cnty,paste(X_STATE,X_CNTYNAM)))) %notin% toupper(unique(with(crosswalk,paste(state,county_name))))]
 
-toupper(unique(with(by_cnty,paste(X_STATE,X_CNTYNAM))))[toupper(unique(with(by_cnty,paste(X_STATE,X_CNTYNAM)))) %notin% toupper(unique(with(crosswalk,paste(state,county_name))))]
-
-grep('LOS ANGELES',toupper(unique(with(crosswalk,paste(state,county_name)))),value = T)
+# grep('LOS ANGELES',toupper(unique(with(crosswalk,paste(state,county_name)))),value = T)
 
 # levels(by_cnty$X_STATE) <- c("ALABAMA", "ALASKA", "ARIZONA", "ARKANSAS", "CALIFORNIA", 
 # 	"COLORADO", "CONNECTICUT", "DELAWARE", "DISTRICT OF COLUMBIA", 
