@@ -30,13 +30,11 @@ matches_into_valid_counties <- function() {
 	# va_matches <- va_matches[!is.na(va_matches)]
 	
 	# summary(unlist(lapply(va_matches,function(x){x$ndrops/x$orig.wnobs})))
-	va_ests <- lapply(unlist(va_matches,recursive = F),function(x){abs(x$est)})
-	va_ests <- as.numeric(va_ests)
-	va_ests <- matrix(va_ests,nrow = length(acu_counties))
+	va_ests <- unlist(lapply(unlist(va_matches,recursive = F),function(x){abs(x$est)}))
+	va_ests <- matrix(va_ests,ncol = length(non_acu_counties), byrow=T)
 	
-	va_sds <- lapply(unlist(va_matches,recursive = F),function(x){x$se.standard})
-	va_sds <- as.numeric(va_sds)
-	va_sds <- matrix(va_sds,nrow = length(acu_counties))
+	va_sds <- unlist(lapply(unlist(va_matches,recursive = F),function(x){x$se}))
+	va_sds <- matrix(va_sds,ncol = length(non_acu_counties), byrow=T)
 	
 	# which_min_by_row <- apply(abs(va_ests),1,which.min)
 	which_min_by_row <- va_ests<2*va_sds
@@ -203,7 +201,7 @@ get_imp_vars <- function(){
 
 load_data()
 brfss <- make_brfss(by_cnty)
-brfss <- subset(brfss,X_STATE %in% c('MD','CO','NY'))
+# brfss <- subset(brfss,X_STATE %in% c('MD','CO','NY'))
 get_imp_vars()
 
 		
@@ -214,7 +212,7 @@ acu_counties <- sample(state_cnty_vec,10)
 non_acu_counties <- setdiff(state_cnty_vec,acu_counties)
 	
 brfss_match_va <- subset(brfss,IYEAR==va_yr)[,..imp_vars]
-# brfss_match_oos <- subset(brfss,IYEAR==oos_yr)[,..imp_vars]
+brfss_match_oos <- subset(brfss,IYEAR==oos_yr)[,..imp_vars]
 
 # run_mds <- function(hl_a,hl_subs,hl_zips){
 state_cnty_vec <- unique(brfss_match_va$state_cnty)
@@ -245,7 +243,7 @@ va_matches <- lapply(va_matches,function(x){
 	return(x)
 })
 
-valid_counties <- matches_into_valid_counties(va_matches,non_acu_counties)
+valid_counties <- matches_into_valid_counties()
 
 # valid_counties <- non_acu_counties[1]
 # names(valid_counties) <- acu_counties[[1]]
@@ -253,10 +251,10 @@ valid_counties <- matches_into_valid_counties(va_matches,non_acu_counties)
 
 
 oos_ests_by_acu_county <- lapply(names(valid_counties),function(acu_county){
-	acu_sub_oos <- subset(brfss_match_va,state_cnty == acu_county)[,!'state_cnty']
+	acu_sub_oos <- subset(brfss_match_oos,state_cnty == acu_county)[,!'state_cnty']
 	
 	non_acu_counties_oos <- valid_counties[[acu_county]]
-	brfss_match_oos_non_acu_subs <- lapply(non_acu_counties_oos,function(x){subset(brfss_match_va,state_cnty == x)[,!'state_cnty']})
+	brfss_match_oos_non_acu_subs <- lapply(non_acu_counties_oos,function(x){subset(brfss_match_oos,state_cnty == x)[,!'state_cnty']})
 	names(brfss_match_oos_non_acu_subs) <- non_acu_counties_oos
 	
 	oos_matches <- lapply(non_acu_counties_oos,function(non_acu_county_name_oos){
@@ -269,20 +267,11 @@ oos_ests_by_acu_county <- lapply(names(valid_counties),function(acu_county){
 })
 
 oos_ests <- lapply(unlist(oos_ests_by_acu_county,recursive = F),function(x){
-	data.frame('est'=x$est,'se_std'=x$se.standard)
+	data.frame('est'=x$est,'se_std'=x$se)
 })
 oos_ests <- do.call(rbind,oos_ests)
 table(sig_oos <- with(oos_ests,abs(est) > 2*se_std))
 
 
-va <- rbind(va_matches[[1]][[4]]$mdata$X[va_matches[[1]][[4]]$index.treated,],va_matches[[1]][[4]]$mdata$X[va_matches[[1]][[4]]$index.control,])
-oos <- rbind(oos_matches[[1]]$mdata$X[oos_matches[[1]]$index.treated,],oos_matches[[1]]$mdata$X[oos_matches[[1]]$index.control,])
-which(!apply(va==oos,1,all))
-which.max(rowSums(va)/rowSums(oos))
-which.min(rowSums(va)/rowSums(oos))
-va[750,]
-oos[750,]
-
-oos_ests_by_acu_county <- do.call(rbind,oos_ests_by_acu_county)
 
 
