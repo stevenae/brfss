@@ -40,7 +40,7 @@ matches_into_valid_counties <- function() {
 	which_min_by_row <- va_ests<2*va_sds
 	est_by_row <- va_ests[which_min_by_row]
 	sd95_by_row <- 2*va_sds[which_min_by_row]
-	print(table(sig_va <- est_by_row > sd95_by_row))
+	print(table(sig_va <<- est_by_row > sd95_by_row))
 	cbind(est_by_row,sd95_by_row)
 	# summary(est_by_row)
 	# for each acu county, get comparison counties
