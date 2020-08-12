@@ -54,7 +54,7 @@ matches_into_valid_counties <- function() {
 
 load_data <- function(){
 	# acupuncture data
-	crosswalk <- read_dta('~/Downloads/ZIP5_County_Crosswalk.dta')
+	crosswalk <<- read_dta('~/Downloads/ZIP5_County_Crosswalk.dta')
 	state_fips_name_map <- unique(crosswalk[,c('state_fips','state')])
 	
 	by_cnty <- lapply(Sys.glob('~/Documents/brfss_smart_data/*'),read_xpt)
@@ -69,7 +69,7 @@ load_data <- function(){
 	by_cnty <- data.table(by_cnty)
 	# by_cnty$X_STATE <- factor(by_cnty$X_STATE)
 	# by_cnty$X_STATE <- as.numeric(by_cnty$X_STATE)
-	state_fips_name_map <- state_fips_name_map[order(state_fips_name_map$state_fips),]
+	state_fips_name_map <<- state_fips_name_map[order(state_fips_name_map$state_fips),]
 	# cbind(state_fips_name_map$state[match(by_cnty$X_STATE,state_fips_name_map$state_fips)],by_cnty$X_STATE)[sample(seq(100000),10),]
 	
 	by_cnty$X_STATE <- state_fips_name_map$state[match(by_cnty$X_STATE,state_fips_name_map$state_fips)]
@@ -271,6 +271,37 @@ oos_ests <- lapply(unlist(oos_ests_by_acu_county,recursive = F),function(x){
 })
 oos_ests <- do.call(rbind,oos_ests)
 table(sig_oos <- with(oos_ests,abs(est) > 2*se_std))
+par(mfrow=c(2,1))
+with(oos_ests,hist(est,col='lightblue'))
+with(oos_ests,boxplot(est,col='lightblue',horizontal = T))
+
+with(oos_ests,sd(est))
+with(oos_ests,mean(est))
+
+
+
+# Okay, A/A test done, let's get real data in there
+
+
+
+poca <- read_csv('~/Downloads/POCA Clinic Establishment Dates - Sheet1.csv')
+
+poca$zip <- parse_number(poca$location)
+
+table(poca$zip %in% crosswalk$zip5)
+
+
+k <- merge(crosswalk,poca,by.x = 'zip5',by.y = 'zip')
+k <- with(k,data.frame('established'=parse_integer(established),'state_cnty'=paste(state,county_name)))
+k <- na.omit(k)
+k$established
+table(toupper(k$state_cnty) %in% toupper(brfss$state_cnty))
+
+
+
+
+
+
 
 
 
