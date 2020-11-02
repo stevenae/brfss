@@ -26,28 +26,33 @@ match_func <- function(acu_sub,non_acu_sub) {
 }
 
 matches_into_valid_counties <- function() {
-	# va_matches <- unlist(va_matches,recursive = F)
-	# va_matches <- va_matches[!is.na(va_matches)]
-	
-	# summary(unlist(lapply(va_matches,function(x){x$ndrops/x$orig.wnobs})))
 	va_ests <- unlist(lapply(unlist(va_matches,recursive = F),function(x){abs(x$est)}))
 	va_ests <- matrix(va_ests,ncol = length(non_acu_counties), byrow=T)
 	
 	va_sds <- unlist(lapply(unlist(va_matches,recursive = F),function(x){x$se}))
 	va_sds <- matrix(va_sds,ncol = length(non_acu_counties), byrow=T)
 	
-	# which_min_by_row <- apply(abs(va_ests),1,which.min)
-	which_min_by_row <- va_ests<2*va_sds
-	est_by_row <- va_ests[which_min_by_row]
-	sd95_by_row <- 2*va_sds[which_min_by_row]
-	print(table(sig_va <<- est_by_row > sd95_by_row))
-	cbind(est_by_row,sd95_by_row)
-	# summary(est_by_row)
-	# for each acu county, get comparison counties
-	valid_counties <- apply(which_min_by_row,1,function(x){non_acu_counties[which(x)]})
+	# from all matches, select those which are not significantly different
+	# which we'll call "indistinguishable"
+	# currently defined as within 1 std dev
+	which_sig_by_row <- va_ests<1*va_sds
+	est_by_row <- va_ests[which_sig_by_row]
+	sd_by_row <- 1*va_sds[which_sig_by_row]
+	# print out the number of indistinguishable counties
+	print(table(sig_va <<- est_by_row > sd_by_row))
+
+	# match the counties which did not have acupuncture clinics
+	# to the counties which did have actupuncture clinics
+	# where the pairing is indistinguishable
+	valid_counties <- apply(which_sig_by_row,1,function(x){non_acu_counties[which(x)]})
 	names(valid_counties) <- acu_counties
-	# diagnostics of selected counties
+	
+	cat("Printing out how often a non-acu county is matched in duplicate
+	ideally we will come back and account for this duplicate nature in our
+	variance and error calculations")
+	print("Count of Matches for Non-Acu Counties")
 	print(table(table(unlist(valid_counties))))
+	print("Pct of Dupe Matched Non-Acu Counties")
 	print(prop.table(table(duplicated(unlist(valid_counties)))))
 	return(valid_counties)
 }
@@ -243,13 +248,26 @@ va_matches <- lapply(va_matches,function(x){
 	return(x)
 })
 
+# looking at all potential matches
+# between acu and non-acu counties
+# in the validation period
+# and selecting those which are 
+# statistically indistinguishable.
+# returned object is set of
+# indistinguishable non-acu counties
+# grouped by acu county.
 valid_counties <- matches_into_valid_counties()
 
 # valid_counties <- non_acu_counties[1]
 # names(valid_counties) <- acu_counties[[1]]
 # acu_county <- names(valid_counties)[1]
 
-
+# now we move from validation period
+# into out-of-sample period.
+# we take the matches which were indistinguishable
+# in the validation period and 
+# see if they are now distinguishable in
+# the out-of-sample period.
 oos_ests_by_acu_county <- lapply(names(valid_counties),function(acu_county){
 	acu_sub_oos <- subset(brfss_match_oos,state_cnty == acu_county)[,!'state_cnty']
 	
