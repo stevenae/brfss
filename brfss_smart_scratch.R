@@ -40,6 +40,7 @@ matches_into_valid_counties <- function() {
 	sd_by_row <- 1*va_sds[which_sig_by_row]
 	# print out the number of indistinguishable counties
 	print(table(sig_va <<- est_by_row > sd_by_row))
+	# cbind(est_by_row,sd_by_row)
 
 	# match the counties which did not have acupuncture clinics
 	# to the counties which did have actupuncture clinics
@@ -65,43 +66,14 @@ load_data <- function(){
 	by_cnty <- lapply(Sys.glob('~/Documents/brfss_smart_data/*'),read_xpt)
 	
 	name_overlap <- Reduce(intersect, lapply(by_cnty,names))
-	# sort(name_overlap)
-	
 	by_cnty <- lapply(by_cnty,function(x){x[,name_overlap]})
 	by_cnty <- do.call(rbind,by_cnty)
 	names(by_cnty) <- make.names(names(by_cnty))
 	by_cnty <- subset(by_cnty,IYEAR %notin% c(2006,2011))
 	by_cnty <- data.table(by_cnty)
-	# by_cnty$X_STATE <- factor(by_cnty$X_STATE)
-	# by_cnty$X_STATE <- as.numeric(by_cnty$X_STATE)
 	state_fips_name_map <<- state_fips_name_map[order(state_fips_name_map$state_fips),]
-	# cbind(state_fips_name_map$state[match(by_cnty$X_STATE,state_fips_name_map$state_fips)],by_cnty$X_STATE)[sample(seq(100000),10),]
-	
+
 	by_cnty$X_STATE <- state_fips_name_map$state[match(by_cnty$X_STATE,state_fips_name_map$state_fips)]
-	
-	# table(unique(by_cnty$X_CNTYNAM) %in% crosswalk$county_name)
-	# table(toupper(unique(with(by_cnty,paste(X_STATE,X_CNTYNAM)))) %in% toupper(unique(with(crosswalk,paste(state,county_name)))))
-	
-	# toupper(unique(with(by_cnty,paste(X_STATE,X_CNTYNAM))))[toupper(unique(with(by_cnty,paste(X_STATE,X_CNTYNAM)))) %notin% toupper(unique(with(crosswalk,paste(state,county_name))))]
-	
-	# grep('LOS ANGELES',toupper(unique(with(crosswalk,paste(state,county_name)))),value = T)
-	
-	# levels(by_cnty$X_STATE) <- c("ALABAMA", "ALASKA", "ARIZONA", "ARKANSAS", "CALIFORNIA", 
-	# 	"COLORADO", "CONNECTICUT", "DELAWARE", "DISTRICT OF COLUMBIA", 
-	# 	"FLORIDA", "GEORGIA", "HAWAII", "IDAHO", "ILLINOIS", "INDIANA",
-	# 	"IOWA", "KANSAS", "KENTUCKY", "LOUISIANA", "MAINE", "MARYLAND",
-	# 	"MASSACHUSETTS", "MICHIGAN", "MINNESOTA", "MISSISSIPPI", 
-	# 	"MISSOURI", "MONTANA", "NEBRASKA", "NEVADA", "NEW HAMPSHIRE",
-	# 	"NEW JERSEY", "NEW MEXICO", "NEW YORK", "NORTH CAROLINA", 
-	# 	"NORTH DAKOTA", "OHIO", "OKLAHOMA", "OREGON", "PENNSYLVANIA",
-	# 	"RHODE ISLAND", "SOUTH CAROLINA", "SOUTH DAKOTA", "TENNESSEE",
-	# 	"TEXAS", "UTAH", "VERMONT", "VIRGINIA", "WASHINGTON",
-	# 	"WEST VIRGINIA", "WISCONSIN", "WYOMING", "GUAM", "PUERTO RICO",
-	# 	"U.S. VIRGIN ISLANDS")
-	
-	# with(subset(by_cnty,X_STATE=='OREGON'),table(X_CNTYNAM,IYEAR))
-	
-	# lapply(unique(by_cnty$X_STATE),function(x){with(subset(by_cnty,X_STATE==x),table(X_CNTYNAM,IYEAR))})
 	
 	by_cnty$IDATE <- as.numeric(mdy(by_cnty$IDATE))
 	by_cnty$state_cnty <- with(by_cnty,paste(X_STATE,X_CNTYNAM))
@@ -122,6 +94,13 @@ load_data <- function(){
 	# by_cnty <- subset(by_cnty,IYEAR<2011)
 }
 
+# Load BRFSS data (https://www.cdc.gov/brfss/index.html)
+# and label outcome as QLACTLM2
+# "Are you limited in any way in any activities because of
+# physical, mental, or emotional problems?"
+# Removing any records which did not answer this question
+# Further, remove any variable with >1k missing observations.
+# Then remove any record which still has missing data.
 make_brfss <- function(by_cnty){
 	brfss <- by_cnty
 	brfss$IYEAR <- parse_integer(brfss$IYEAR)
@@ -131,9 +110,14 @@ make_brfss <- function(by_cnty){
 	
 	missing_vars <- names(brfss)[colSums(is.na(brfss))>nrow(brfss)/1000]
 	brfss <- brfss[,!..missing_vars]
-	brfss <- na.omit(brfss)
+	# brfss <- na.omit(brfss)
 }
 
+# We will run an XGBoost model
+# to predict the outcome (missing work due to health)
+# in our validation period.
+# We then take the important variables and use them
+# to generate matches between acu and non-acu counties.
 get_imp_vars <- function(){
 	# model_iters <- function(brfss) {
 	iter_yrs <- sort(unique(brfss$IYEAR),decreasing = F)
@@ -159,10 +143,10 @@ get_imp_vars <- function(){
 	# 9:  MENTHLTH 1.228678e-02 1.997885e-02 0.023363502
 	# INTVID is consistently in the top 10...very curious, but would confound the planned analysis\
 	# Same with SEQNO
-	cut_vars <- c('USEEQUIP','POORHLTH','GENHLTH','PHYSHLTH','X_RFHLTH','MENTHLTH','IDATE',
+	cut_vars <- c('USEEQUIP','POORHLTH','GENHLTH','PHYSHLTH','X_RFHLTH','MENTHLTH',
 								'outcome',
 								'QLACTLM2','X_CNTYWT','X_WT2','X_CNTY','X_CNTYNAM','ADJCNTY','INTVID','SEQNO','X_STATE','X_PSU','X_STSTR','NATTMPTS',
-								'IDAY','AGE_C_F','RACE_C_F','IMONTH')
+								'IDATE','IDAY','AGE_C_F','RACE_C_F','IMONTH')
 	
 	tr_packaged <- xgb.DMatrix(data.matrix(dat_trva[tr_rows,!..cut_vars]),
 														 label=dat_trva[tr_rows,outcome]
@@ -188,7 +172,6 @@ get_imp_vars <- function(){
 		early_stopping_rounds = 20,
 		# verbose=F,
 		maximize=T,
-		# feval=evalerror,
 		eval_metric = 'auc',
 		nrounds =  400,
 		data = tr_packaged,
@@ -206,11 +189,8 @@ get_imp_vars <- function(){
 
 load_data()
 brfss <- make_brfss(by_cnty)
-# brfss <- subset(brfss,X_STATE %in% c('MD','CO','NY'))
 get_imp_vars()
 
-		
-		
 # trying matching in OOS group
 state_cnty_vec <- unique(dat_oos$state_cnty)
 acu_counties <- sample(state_cnty_vec,10)
