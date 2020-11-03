@@ -35,9 +35,10 @@ matches_into_valid_counties <- function() {
 	# from all matches, select those which are not significantly different
 	# which we'll call "indistinguishable"
 	# currently defined as within 1 std dev
-	which_sig_by_row <- va_ests<1*va_sds
+	# which_sig_by_row <- va_ests<2*va_sds
+	which_sig_by_row <- apply(abs(va_ests/va_sds),1,which.min)
 	est_by_row <- va_ests[which_sig_by_row]
-	sd_by_row <- 1*va_sds[which_sig_by_row]
+	sd_by_row <- va_sds[which_sig_by_row]
 	# print out the number of indistinguishable counties
 	print(table(sig_va <<- est_by_row > sd_by_row))
 	# cbind(est_by_row,sd_by_row)
@@ -45,7 +46,7 @@ matches_into_valid_counties <- function() {
 	# match the counties which did not have acupuncture clinics
 	# to the counties which did have actupuncture clinics
 	# where the pairing is indistinguishable
-	valid_counties <- apply(which_sig_by_row,1,function(x){non_acu_counties[which(x)]})
+	valid_counties <- non_acu_counties[which_sig_by_row] #apply(which_sig_by_row,1,function(x){non_acu_counties[which(x)]})
 	names(valid_counties) <- acu_counties
 	
 	cat("Printing out how often a non-acu county is matched in duplicate
@@ -154,7 +155,7 @@ get_imp_vars <- function(){
 		watchlist=list(train=tr_packaged,validate=va_packaged)
 	)
 
-	(model_imp <- head(xgb.importance(model=tr_va_xgb_m),5))
+	(model_imp <- head(xgb.importance(model=tr_va_xgb_m),20))
 	imp_val <<- model_imp$Gain
 	imp_vars <- model_imp$Feature
 	imp_vars <<- unique(c(imp_vars,'state_cnty','outcome','X_CNTYWT'))
@@ -211,7 +212,7 @@ valid_counties <- matches_into_valid_counties()
 # see if they are now distinguishable in
 # the out-of-sample period.
 		
-oos_ests_by_acu_county <- foreach(acu_county=names(valid_counties),.packages=c('data.table')) %do% {
+oos_ests_aa_by_acu_county <- foreach(acu_county=names(valid_counties),.packages=c('data.table')) %do% {
 	acu_sub_oos <- subset(brfss_match_oos,state_cnty == acu_county)[,!'state_cnty']
 	
 	non_acu_counties_oos <- valid_counties[[acu_county]]
@@ -226,17 +227,17 @@ oos_ests_by_acu_county <- foreach(acu_county=names(valid_counties),.packages=c('
 	
 }
 
-oos_ests <- lapply(unlist(oos_ests_by_acu_county,recursive = F),function(x){
+oos_ests_aa <- lapply(unlist(oos_ests_aa_by_acu_county,recursive = F),function(x){
 	data.frame('est'=x$est,'se_std'=x$se.standard)
 })
-oos_ests <- do.call(rbind,oos_ests)
-table(sig_oos <- with(oos_ests,abs(est) > 2*se_std))
+oos_ests_aa <- do.call(rbind,oos_ests_aa)
+table(sig_oos <- with(oos_ests_aa,abs(est) > 2*se_std))
 par(mfrow=c(2,1))
-with(oos_ests,hist(est,col='lightblue'))
-with(oos_ests,boxplot(est,col='lightblue',horizontal = T))
+with(oos_ests_aa,hist(est,col='lightblue'))
+with(oos_ests_aa,boxplot(est,col='lightblue',horizontal = T))
 
-with(oos_ests,sd(est))
-with(oos_ests,mean(est))
+with(oos_ests_aa,sd(est))
+with(oos_ests_aa,mean(est))
 
 # Okay, A/A test done, let's get real data in there
 
@@ -290,7 +291,7 @@ valid_counties <- matches_into_valid_counties()
 # see if they are now distinguishable in
 # the out-of-sample period.
 
-oos_ests_by_acu_county <- foreach(acu_county=names(valid_counties),.packages=c('data.table')) %do% {
+oos_ests_poca_by_acu_county <- foreach(acu_county=names(valid_counties),.packages=c('data.table')) %do% {
 	acu_sub_oos <- subset(brfss_match_oos,state_cnty == acu_county)[,!'state_cnty']
 	non_acu_counties_oos <- valid_counties[[acu_county]]
 	brfss_match_oos_non_acu_subs <- lapply(non_acu_counties_oos,function(x){subset(brfss_match_oos,state_cnty == x)[,!'state_cnty']})
@@ -303,15 +304,30 @@ oos_ests_by_acu_county <- foreach(acu_county=names(valid_counties),.packages=c('
 	}
 }
 
-oos_ests <- lapply(unlist(oos_ests_by_acu_county,recursive = F),function(x){
+oos_ests_poca <- lapply(unlist(oos_ests_poca_by_acu_county,recursive = F),function(x){
 	data.frame('est'=x$est,'se_std'=x$se.standard)
 })
-oos_ests <- do.call(rbind,oos_ests)
-table(sig_oos <- with(oos_ests,abs(est) > 2*se_std))
+oos_ests_poca <- do.call(rbind,oos_ests_poca)
+table(sig_oos <- with(oos_ests_poca,abs(est) > 2*se_std))
 par(mfrow=c(2,1))
-with(oos_ests,hist(est,col='lightblue'))
-with(oos_ests,boxplot(est,col='lightblue',horizontal = T))
+with(oos_ests_poca,hist(est,col='lightblue'))
+with(oos_ests_poca,boxplot(est,col='lightblue',horizontal = T))
 
-with(oos_ests,sd(est))
-with(oos_ests,mean(est))
-with(oos_ests,median(est))
+with(oos_ests_poca,sd(est))
+with(oos_ests_poca,mean(est))
+with(oos_ests_poca,median(est))
+
+par(mfrow=c(1,1))
+aa_test_conf_int <- with(oos_ests_aa,quantile(est/se_std,c(.025,.975)))
+with(oos_ests_poca,
+		 median(est/se_std))
+hist_xlim <- range(round(c(with(oos_ests_aa,est/se_std),with(oos_ests_poca,est/se_std))/5)*5)
+hist_breaks <- seq(hist_xlim[1],hist_xlim[2],10)
+poca_est <- with(oos_ests_poca,mean(est/se_std))
+poca_test_conf_int <- with(oos_ests_poca,quantile(est/se_std,c(.025,.975)))
+with(oos_ests_poca,plot(density(est/se_std),col='cyan4'))
+abline(v=poca_test_conf_int,col='cyan4',lty=2)
+with(oos_ests_aa,lines(density(est/se_std),col='indianred1'))
+abline(v=aa_test_conf_int,col='indianred1',lty=2)
+
+	
