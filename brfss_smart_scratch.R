@@ -321,13 +321,22 @@ par(mfrow=c(1,1))
 aa_test_conf_int <- with(oos_ests_aa,quantile(est/se_std,c(.025,.975)))
 with(oos_ests_poca,
 		 median(est/se_std))
-hist_xlim <- range(round(c(with(oos_ests_aa,est/se_std),with(oos_ests_poca,est/se_std))/5)*5)
-hist_breaks <- seq(hist_xlim[1],hist_xlim[2],10)
+plot_xlim <- range(round(c(with(oos_ests_aa,est/se_std),with(oos_ests_poca,est/se_std))/5)*5)
+plot_ylim <- c(0,max(c(with(oos_ests_aa,density(est/se_std))$y),with(oos_ests_poca,density(est/se_std))$y))
 poca_est <- with(oos_ests_poca,mean(est/se_std))
 poca_test_conf_int <- with(oos_ests_poca,quantile(est/se_std,c(.025,.975)))
-with(oos_ests_poca,plot(density(est/se_std),col='cyan4'))
-abline(v=poca_test_conf_int,col='cyan4',lty=2)
-with(oos_ests_aa,lines(density(est/se_std),col='indianred1'))
+with(oos_ests_aa,plot(density(est/se_std),col='indianred1',ylim=plot_ylim,xlim=plot_xlim,
+												main='A/A Test',
+												xlab='Estimate / Std Err'))
 abline(v=aa_test_conf_int,col='indianred1',lty=2)
+
+
+with(oos_ests_aa,plot(density(est/se_std),col='indianred1',ylim=plot_ylim,xlim=plot_xlim,
+											main='POCA vs A/A Test',
+											xlab='Estimate / Std Err'))
+abline(v=aa_test_conf_int,col='indianred1',lty=2)
+with(oos_ests_poca,lines(density(est/se_std),col='cyan4'))
+abline(v=poca_test_conf_int,col='cyan4',lty=2)
+
 
 	
