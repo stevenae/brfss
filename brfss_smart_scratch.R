@@ -337,6 +337,7 @@ with(oos_ests_aa,plot(density(est/se_std),col='indianred1',ylim=plot_ylim,xlim=p
 abline(v=aa_test_conf_int,col='indianred1',lty=2)
 with(oos_ests_poca,lines(density(est/se_std),col='cyan4'))
 abline(v=poca_test_conf_int,col='cyan4',lty=2)
+legend('topleft',inset = .1,legend=c('A/A','POCA'),fill=c('indianred1','cyan4'))
 
 
 	
